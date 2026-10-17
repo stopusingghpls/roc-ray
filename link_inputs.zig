@@ -26,6 +26,7 @@ pub const RocTarget = enum {
     x64mac,
     x64win,
     x64v1glibc,
+    x64v1musl,
 
     // arm64 (aarch64) targets
     arm64mac,
@@ -35,6 +36,7 @@ pub const RocTarget = enum {
             .x64mac => .{ .cpu_arch = .x86_64, .os_tag = .macos },
             .x64win => .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .msvc },
             .x64v1glibc => .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu },
+            .x64v1musl => .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl },
             .arm64mac => .{ .cpu_arch = .aarch64, .os_tag = .macos },
         };
     }
@@ -44,6 +46,7 @@ pub const RocTarget = enum {
             .x64mac => "x64mac",
             .x64win => "x64win",
             .x64v1glibc => "x64v1glibc",
+            .x64v1musl => "x64v1musl",
             .arm64mac => "arm64mac",
         };
     }
@@ -60,6 +63,7 @@ pub const RocTarget = enum {
         return switch (self) {
             .x64mac, .arm64mac => "macos",
             .x64v1glibc => "linux-x64",
+            .x64v1musl => "linux-x64",
             .x64win => "windows-x64",
         };
     }
@@ -102,7 +106,7 @@ pub const RocTarget = enum {
     /// architecture. See vendor/libvpx/config/README.md.
     pub fn libvpxConfigDir(self: RocTarget) []const u8 {
         return switch (self) {
-            .x64mac, .x64win, .x64v1glibc => "vendor/libvpx/config/x86_64",
+            .x64mac, .x64win, .x64v1glibc, .x64v1musl => "vendor/libvpx/config/x86_64",
             .arm64mac => "vendor/libvpx/config/arm64",
         };
     }
@@ -110,7 +114,7 @@ pub const RocTarget = enum {
     /// The SIMD sources matching that config.
     pub fn libvpxSimdSources(self: RocTarget) []const []const u8 {
         return switch (self) {
-            .x64mac, .x64win, .x64v1glibc => &libvpx_x86_64_sources,
+            .x64mac, .x64win, .x64v1glibc, .x64v1musl => &libvpx_x86_64_sources,
             .arm64mac => &libvpx_arm64_sources,
         };
     }
@@ -582,6 +586,8 @@ pub const Profile = enum {
     arm64mac,
     @"x64v1glibc-x11",
     @"x64v1glibc-wayland",
+    @"x64v1musl-x11",
+    @"x64v1musl-wayland",
     x64win,
 
     pub fn rocTarget(self: Profile) RocTarget {
@@ -589,6 +595,7 @@ pub const Profile = enum {
             .x64mac => .x64mac,
             .arm64mac => .arm64mac,
             .@"x64v1glibc-x11", .@"x64v1glibc-wayland" => .x64v1glibc,
+            .@"x64v1musl-x11", .@"x64v1musl-wayland" => .x64v1musl,
             .x64win => .x64win,
         };
     }
@@ -599,6 +606,8 @@ pub const Profile = enum {
             .x64mac, .arm64mac => "vendor/raylib/macos/libraylib.a",
             .@"x64v1glibc-x11" => "vendor/raylib/linux-x64/libraylib.a",
             .@"x64v1glibc-wayland" => "vendor/raylib/linux-x64-wayland/libraylib.a",
+            .@"x64v1musl-x11" => "vendor/raylib/linux-x64/libraylib.a",
+            .@"x64v1musl-wayland" => "vendor/raylib/linux-x64-wayland/libraylib.a",
             .x64win => "vendor/raylib/windows-x64/raylib.lib",
         };
     }
@@ -646,6 +655,19 @@ pub fn addProducerStep(b: *std.Build) *std.Build.Step {
                 // `x11_clipboard_syms`); platform/main-wayland.roc names no
                 // libX11 input.
                 if (profile == .@"x64v1glibc-x11") {
+                    install(b, step, generateX11SoStub(b, target).getEmittedBin(), b.fmt("{s}/libX11.so", .{dir}));
+                }
+            },
+            .x64v1musl => {
+               for ([_][]const u8{ "Scrt1.o", "crti.o", "crtn.o" }) |crt| {
+                    install(b, step, b.path(b.fmt("platform/targets/x64v1glibc/{s}", .{crt})), b.fmt("{s}/{s}", .{ dir, crt }));
+                }
+                install(b, step, generateLibcStub(b, target).getEmittedBin(), b.fmt("{s}/libc.so", .{dir}));
+                install(b, step, generateLibmStub(b, target).getEmittedBin(), b.fmt("{s}/libm.so", .{dir}));
+                // Only the X11 raylib references Xlib directly (see
+                // `x11_clipboard_syms`); platform/main-wayland.roc names no
+                // libX11 input.
+                if (profile == .@"x64v1musl-x11") {
                     install(b, step, generateX11SoStub(b, target).getEmittedBin(), b.fmt("{s}/libX11.so", .{dir}));
                 }
             },

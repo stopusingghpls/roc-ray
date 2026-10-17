@@ -28,6 +28,7 @@ const all_native_targets = [_]RocTarget{
     .x64mac,
     .arm64mac,
     .x64v1glibc,
+    .x64v1musl,
     .x64win,
 };
 
@@ -433,7 +434,7 @@ fn detectNativeRocTarget(target: std.Target) ?RocTarget {
             else => null,
         },
         .linux => switch (target.cpu.arch) {
-            .x86_64 => .x64v1glibc,
+            .x86_64 => if (target.abi.isGnu()) .x64v1glibc else .x64v1musl,
             else => null,
         },
         .windows => switch (target.cpu.arch) {
